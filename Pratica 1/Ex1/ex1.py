@@ -5,7 +5,7 @@ def index(arquivo):
     texto = open(arquivo, encoding='utf8').read()
 
     sem_acentos = unidecode(texto)
-    somente_letras = re.sub(r'[^a-zA-Z\s]', ' ', sem_acentos)
+    somente_letras = re.sub(r'[^a-zA-Z ]', ' ', sem_acentos)
 
     minusculas = somente_letras.lower()
     unicas = set(minusculas.split())
