@@ -1,7 +1,7 @@
 import numpy as np
 
 
-def similaridades_consulta_2(consulta, documentos, vocabulario):
+def similaridades_consulta(consulta, documentos, vocabulario):
     matriz_tf, matriz_idf = matriz_tf_idf(documentos, vocabulario)
     vetor_consulta = np.zeros(len(vocabulario))
 
@@ -79,7 +79,7 @@ if __name__ == "__main__":
     vocabulario = set(palavra for doc in documentos for palavra in doc)
     vocabulario.update(consulta)
 
-    similaridades_2 = similaridades_consulta_2(consulta, documentos, vocabulario)
+    similaridades_2 = similaridades_consulta(consulta, documentos, vocabulario)
 
     for i, sim in enumerate(similaridades_2):
         print(f"Similaridade do documento {i+1}: {sim:.3f}")
