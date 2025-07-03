@@ -1,50 +1,37 @@
-import re
-
 import numpy as np
-from unidecode import unidecode
 
 
-def produto_escalar(vetor1, vetor2):
-    return sum(a * b for a, b in zip(vetor1, vetor2))
+def similaridades_consulta(consulta, documentos, vocabulario):
+    vetor_consulta = np.zeros(len(vocabulario))
+    for i, palavra in enumerate(vocabulario):
+        if palavra in consulta:
+            vetor_consulta[i] = calcular_tf_idf(palavra, consulta, documentos)
+
+    similaridades = []
+
+    for documento in documentos:
+        vetor_documento = np.zeros(len(vocabulario))
+        for i, palavra in enumerate(vocabulario):
+            if palavra in documento:
+                vetor_documento[i] = calcular_tf_idf(palavra, documento, documentos)
+        similaridade = calcular_similaridade(vetor_consulta, vetor_documento)
+        similaridades.append(similaridade)
+
+    return similaridades
 
 
-def similaridade(vetor1, vetor2):
-    if not vetor1 or not vetor2:
+def calcular_tf_idf(palavra, documento, documentos):
+    tf = calcular_tf(palavra, documento)
+    idf = calcular_idf(palavra, documentos)
+
+    return tf * idf
+
+
+def calcular_tf(palavra, documento):
+    if not documento:
         return 0
 
-    numerador = produto_escalar(vetor1, vetor2)
-    denominador = np.linalg.norm(vetor1)
-
-    if denominador == 0:
-        return 0
-
-    return numerador / denominador
-
-
-def palavras_documento(arquivo, vocabulario):
-    with open(arquivo, encoding="utf-8") as f:
-        texto = f.read()
-
-        sem_acentos = unidecode(texto)
-        somente_letras = re.sub(r"[^a-zA-Z ]", " ", sem_acentos)
-
-        minusculas = somente_letras.lower()
-
-        palavras = minusculas.split()
-
-        if vocabulario:
-            palavras = [p for p in palavras if p in vocabulario]
-
-        return palavras
-
-
-def tf(palavra, documento, vocabulario):
-    palavras_doc = palavras_documento(documento, vocabulario)
-
-    if not palavras_doc:
-        return 0
-
-    f = palavras_doc.count(palavra)
+    f = documento.count(palavra)
 
     if f == 0:
         return 0
@@ -52,73 +39,42 @@ def tf(palavra, documento, vocabulario):
     return 1 + np.log2(f)
 
 
-def idf(palavra, documentos, vocabulario):
-    n = len(documentos)
-
-    if n == 0:
+def calcular_idf(palavra, documentos):
+    if not documentos:
         return 0
 
-    df = sum(1 for doc in documentos if tf(palavra, doc, vocabulario) > 0)
+    ni = sum(1 for doc in documentos if palavra in doc)
 
-    return np.log2(n / df) if df > 0 else 0
-
-
-def tf_idf(palavra, documentos, vocabulario):
-    return [
-        tf(palavra, doc, vocabulario) * idf(palavra, documentos, vocabulario)
-        for doc in documentos
-    ]
+    return np.log2(len(documentos) / (ni))
 
 
-def similaridade_consulta(consulta, documentos, vocabulario):
-    palavras_consulta = palavras_documento(consulta, vocabulario)
-    vetor_consulta = [
-        idf(palavra, documentos, vocabulario) if palavra in palavras_consulta else 0
-        for palavra in vocabulario
-    ]
-    similaridades = []
+def calcular_similaridade(vetor_consulta, vetor_documento):
+    numerador = np.dot(vetor_consulta, vetor_documento)
+    denominador = np.linalg.norm(vetor_documento)
 
-    for documento in documentos:
-        vetor_documento = [
-            (
-                tf_idf(palavra, documentos, vocabulario)[documentos.index(documento)]
-                if palavra in palavras_consulta
-                else 0
-            )
-            for palavra in vocabulario
-        ]
-        similaridade_doc = similaridade(vetor_documento, vetor_consulta)
-        similaridades.append(similaridade_doc)
+    if denominador == 0:
+        return 0
 
-    return similaridades
+    return numerador / denominador
 
 
 if __name__ == "__main__":
+    consulta = ["to", "do"]
     documentos = [
-        "documents/d1.txt",
-        "documents/d2.txt",
-        "documents/d3.txt",
-        "documents/d4.txt",
-    ]
-    vocabulario = [
-        "to",
-        "do",
-        "is",
-        "be",
-        "or",
-        "not",
-        "i",
-        "am",
-        "what",
-        "think",
-        "therefore",
-        "da",
-        "let",
-        "it",
+        # d1: "To do is to be. To be is to do."
+        ["to", "do", "is", "to", "be", "to", "be", "is", "to", "do"],
+        # d2: "To be or not to be. I am what I am."
+        ["to", "be", "or", "not", "to", "be", "i", "am", "what", "i", "am"],
+        # d3: "I think therefore I am. Do be do be do."
+        ["i", "think", "therefore", "i", "am", "do", "be", "do", "be", "do"],
+        # d4: "Do do do, da da da. Let it be, let it be."
+        ["do", "do", "do", "da", "da", "da", "let", "it", "be", "let", "it", "be"],
     ]
 
-    consulta = "consulta.txt"
-    similaridades = similaridade_consulta(consulta, documentos, vocabulario)
+    vocabulario = set(palavra for doc in documentos for palavra in doc)
+    vocabulario.update(consulta)
 
-    for doc, sim in zip(documentos, similaridades):
-        print(f"Similaridade com {doc}: {sim:.4f}")
+    similaridades = similaridades_consulta(consulta, documentos, vocabulario)
+
+    for i, sim in enumerate(similaridades):
+        print(f"Similaridade do documento {i+1}: {sim:.3f}")
