@@ -1,30 +1,44 @@
 import numpy as np
 
 
-def similaridades_consulta(consulta, documentos, vocabulario):
+def similaridades_consulta_2(consulta, documentos, vocabulario):
+    matriz_tf, matriz_idf = matriz_tf_idf(documentos, vocabulario)
     vetor_consulta = np.zeros(len(vocabulario))
+
     for i, palavra in enumerate(vocabulario):
-        if palavra in consulta:
-            vetor_consulta[i] = calcular_tf_idf(palavra, consulta, documentos)
+        vetor_consulta[i] = matriz_idf[i] if palavra in consulta else 0
 
     similaridades = []
 
-    for documento in documentos:
-        vetor_documento = np.zeros(len(vocabulario))
-        for i, palavra in enumerate(vocabulario):
-            if palavra in documento:
-                vetor_documento[i] = calcular_tf_idf(palavra, documento, documentos)
+    for j in range(len(documentos)):
+        vetor_documento = matriz_tf[:, j] * matriz_idf
         similaridade = calcular_similaridade(vetor_consulta, vetor_documento)
         similaridades.append(similaridade)
 
     return similaridades
 
 
-def calcular_tf_idf(palavra, documento, documentos):
-    tf = calcular_tf(palavra, documento)
-    idf = calcular_idf(palavra, documentos)
+def matriz_tf_idf(documentos, vocabulario):
+    matriz_tf = np.zeros((len(vocabulario), len(documentos)))
 
-    return tf * idf
+    for i, palavra in enumerate(vocabulario):
+        for j, documento in enumerate(documentos):
+            matriz_tf[i][j] = calcular_tf(palavra, documento)
+
+    matriz_idf = np.zeros(len(vocabulario))
+
+    for i, palavra in enumerate(vocabulario):
+        matriz_idf[i] = calcular_idf(i, documentos, matriz_tf)
+
+    return matriz_tf, matriz_idf
+
+
+def calcular_idf(palavra, documentos, matriz_tf):
+    N = len(documentos)
+    ni = np.count_nonzero(matriz_tf[palavra, :])
+    if ni == 0:
+        return 0
+    return np.log2(N / ni)
 
 
 def calcular_tf(palavra, documento):
@@ -37,15 +51,6 @@ def calcular_tf(palavra, documento):
         return 0
 
     return 1 + np.log2(f)
-
-
-def calcular_idf(palavra, documentos):
-    if not documentos:
-        return 0
-
-    ni = sum(1 for doc in documentos if palavra in doc)
-
-    return np.log2(len(documentos) / (ni))
 
 
 def calcular_similaridade(vetor_consulta, vetor_documento):
@@ -74,7 +79,7 @@ if __name__ == "__main__":
     vocabulario = set(palavra for doc in documentos for palavra in doc)
     vocabulario.update(consulta)
 
-    similaridades = similaridades_consulta(consulta, documentos, vocabulario)
+    similaridades_2 = similaridades_consulta_2(consulta, documentos, vocabulario)
 
-    for i, sim in enumerate(similaridades):
+    for i, sim in enumerate(similaridades_2):
         print(f"Similaridade do documento {i+1}: {sim:.3f}")
