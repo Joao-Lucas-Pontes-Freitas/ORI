@@ -55,7 +55,7 @@ def calcular_tf(palavra, documento):
 
 def calcular_similaridade(vetor_consulta, vetor_documento):
     numerador = np.dot(vetor_consulta, vetor_documento)
-    denominador = np.linalg.norm(vetor_documento)
+    denominador = np.linalg.norm(vetor_documento) * np.linalg.norm(vetor_consulta)
 
     if denominador == 0:
         return 0
