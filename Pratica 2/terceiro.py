@@ -1,115 +1,118 @@
-import numpy as np
 from collections import Counter
+
+import numpy as np
+from scipy.sparse import csr_matrix
+
 
 def construir_vocabulario(documentos, consulta):
     """
-    Constrói um vocabulário ordenado a partir dos documentos e da consulta.
+    Constrói um vocabulário ordenado sem duplicatas.
     """
-    termos = {termo for doc in documentos for termo in doc} | set(consulta)
+    termos = set()
+    for doc in documentos:
+        termos.update(doc)
+    for termo in consulta:
+        if termo not in termos:
+            termos.add(termo)
     return sorted(termos)
 
-def calcular_matriz_tf(documentos, vocab):
+
+def construir_matriz_tf_csr(documentos, vocab):
     """
-    Calcula a matriz TF (termo×documento) densamente:
-    tf = 1 + log₂(frequência) se a frequência > 0, senão 0.
-    Retorna um ndarray de forma (V, D).
+    Constrói matriz TF esparsa (CSR) de forma eficiente:
+    tf = 1 + log₂(frequência) para f > 0.
     """
+    idx = {termo: i for i, termo in enumerate(vocab)}
     V = len(vocab)
     D = len(documentos)
-    indice = {termo: i for i, termo in enumerate(vocab)}
-    contadores = [Counter(doc) for doc in documentos]
+    rows, cols, data = [], [], []
+    for j, doc in enumerate(documentos):
+        counter = Counter(doc)
+        for termo, freq in counter.items():
+            i = idx[termo]
+            rows.append(i)
+            cols.append(j)
+            data.append(1 + np.log2(freq))
+    return csr_matrix((data, (rows, cols)), shape=(V, D))
 
-    tf = np.zeros((V, D), dtype=float)
-    for j, contador in enumerate(contadores):
-        for termo, freq in contador.items():
-            i = indice[termo]
-            tf[i, j] = 1 + np.log2(freq)
-    return tf
 
-def calcular_vetor_idf(tf_matrix):
+def calcular_idf(idf_matrix):
     """
-    Calcula o vetor IDF de forma vetorizada:
-    idf[i] = log₂(N / df_i), onde df_i = número de documentos contendo o termo i.
+    Recebe matriz TF esparsa e retorna vetor IDF:
+    idf[i] = log₂(N / df_i).
     """
-    V, D = tf_matrix.shape
-    df = np.count_nonzero(tf_matrix > 0, axis=1)
-    df = np.where(df > 0, df, 1)   # evita divisão por zero
-    idf = np.log2(D / df)
-    return idf
+    V, D = idf_matrix.shape
+    # conta em quantos documentos cada termo aparece
+    df = np.ravel(idf_matrix.astype(bool).sum(axis=1))
+    df = np.where(df > 0, df, 1)  # evita divisão por zero
+    return np.log2(D / df)
 
-def aplicar_pesos_tfidf(tf_matrix, idf_vector):
-    """
-    Aplica o peso TF-IDF multiplicando cada linha de TF pelo IDF correspondente.
-    Retorna matriz de forma (V, D).
-    """
-    return tf_matrix * idf_vector[:, None]
 
-def calcular_vetor_consulta(consulta, vocab, idf_vector):
+def aplicar_tfidf_csr(tf_csr, idf_vector):
     """
-    Constrói o vetor TF-IDF da consulta no mesmo espaço do vocabulário.
+    Multiplica cada linha (termo) pelo seu idf, mantendo CSR.
     """
+    return tf_csr.multiply(idf_vector[:, None])
+
+
+def montar_vetor_consulta_csr(consulta, vocab, idf_vector):
+    """
+    Constrói vetor TF-IDF da consulta como array denso,
+    pois geralmente é pequeno.
+    """
+    idx = {termo: i for i, termo in enumerate(vocab)}
     V = len(vocab)
-    indice = {termo: i for i, termo in enumerate(vocab)}
-    cont_q = Counter(consulta)
-
     q_tf = np.zeros(V, dtype=float)
-    for termo, freq in cont_q.items():
-        if termo in indice:
-            q_tf[indice[termo]] = 1 + np.log2(freq)
+    counter = Counter(consulta)
+    for termo, freq in counter.items():
+        if termo in idx:
+            q_tf[idx[termo]] = 1 + np.log2(freq)
+    return q_tf * idf_vector
 
-    q_tfidf = q_tf * idf_vector
-    return q_tfidf
 
-def calcular_similaridades_cosseno(tfidf_matrix, vetor_consulta):
+def calcular_similaridades_cosseno_sparse(docs_tfidf_csr, q_tfidf):
     """
-    Calcula similaridade de cosseno entre cada coluna de tfidf_matrix e vetor_consulta.
-    Retorna um array de tamanho D.
+    Calcula similaridades de cosseno entre cada coluna de docs_tfidf_csr
+    e o vetor denso q_tfidf.
     """
-    normas_docs  = np.linalg.norm(tfidf_matrix, axis=0)
-    norma_consulta = np.linalg.norm(vetor_consulta)
-    denom = normas_docs * norma_consulta + 1e-9  # para evitar divisão por zero
+    # normas dos documentos: sqrt(sum de quadrados por coluna)
+    sq = docs_tfidf_csr.power(2)
+    norms_docs = np.sqrt(np.ravel(sq.sum(axis=0)))
+    norm_q = np.linalg.norm(q_tfidf)
+    # produto interno: cada coluna ⋅ vetor consulta
+    # docs_tfidf_csr.T é (D, V), q_tfidf é (V,)
+    dots = docs_tfidf_csr.T.dot(q_tfidf)
+    return np.array(dots / (norms_docs * norm_q + 1e-9))
 
-    return (tfidf_matrix.T @ vetor_consulta) / denom
 
 def obter_similaridades(consulta, documentos):
     """
-    Função principal:
-    Dada uma consulta (lista de tokens) e documentos (lista de listas de tokens),
-    retorna as similaridades de cosseno entre consulta e cada documento.
+    Pipeline completo sem scikit-learn, usando scipy.sparse.
+    Retorna lista de similaridades de cosseno.
     """
-    # 1) Vocabulário
+    # 1) vocabulário
     vocab = construir_vocabulario(documentos, consulta)
-
-    # 2) TF
-    tf = calcular_matriz_tf(documentos, vocab)
-
+    # 2) TF esparso
+    tf_csr = construir_matriz_tf_csr(documentos, vocab)
     # 3) IDF
-    idf = calcular_vetor_idf(tf)
-
-    # 4) TF-IDF dos documentos
-    tfidf_docs = aplicar_pesos_tfidf(tf, idf)
-
-    # 5) TF-IDF da consulta
-    vetor_consulta = calcular_vetor_consulta(consulta, vocab, idf)
-
-    # 6) Similaridades
-    sims = calcular_similaridades_cosseno(tfidf_docs, vetor_consulta)
+    idf = calcular_idf(tf_csr)
+    # 4) TF-IDF esparso
+    docs_tfidf = aplicar_tfidf_csr(tf_csr, idf)
+    # 5) vetor consulta
+    q_tfidf = montar_vetor_consulta_csr(consulta, vocab, idf)
+    # 6) similaridades
+    sims = calcular_similaridades_cosseno_sparse(docs_tfidf, q_tfidf)
     return sims.tolist()
 
 
 if __name__ == "__main__":
     consulta = ["to", "do"]
     documentos = [
-        # d1: "To do is to be. To be is to do."
         ["to", "do", "is", "to", "be", "to", "be", "is", "to", "do"],
-        # d2: "To be or not to be. I am what I am."
         ["to", "be", "or", "not", "to", "be", "i", "am", "what", "i", "am"],
-        # d3: "I think therefore I am. Do be do be do."
         ["i", "think", "therefore", "i", "am", "do", "be", "do", "be", "do"],
-        # d4: "Do do do, da da da. Let it be, let it be."
         ["do", "do", "do", "da", "da", "da", "let", "it", "be", "let", "it", "be"],
     ]
-
     similaridades = obter_similaridades(consulta, documentos)
     for idx, score in enumerate(similaridades, start=1):
         print(f"Documento {idx}: similaridade = {score:.6f}")
