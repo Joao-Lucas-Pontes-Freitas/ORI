@@ -92,7 +92,7 @@ if __name__ == "__main__":
 
     start_time = time.time()
 
-    caminhos = get_paths("docs")
+    caminhos = get_paths("../docs_clean")
     nomes = [os.path.basename(caminho) for caminho in caminhos]
     documentos = [ler_documentos(caminho) for caminho in caminhos]
 
@@ -130,25 +130,27 @@ if __name__ == "__main__":
     print(f"Tempo gasto no processamento das matrizes TF e IDF: {time_spent} segundos")
     print()
 
-    consulta = " ".join(input("Digite a consulta: ").strip().split())
-    consulta_normalizada = normalizar_texto(consulta)
+    consulta = " ".join(input("Digite a consulta ou enter para sair: ").strip().split())
+    while consulta:
+        start_time = time.time()
+        consulta_normalizada = normalizar_texto(consulta)
+        similaridades = similaridades_consulta(consulta_normalizada, documentos, vocabulario, matriz_tf, matriz_idf)
+        finish_time = time.time()
 
-    start_time = time.time()
-    similaridades = similaridades_consulta(consulta_normalizada, documentos, vocabulario, matriz_tf, matriz_idf)
-    finish_time = time.time()
+        time_spent = finish_time - start_time
 
-    time_spent = finish_time - start_time
+        print()
+        print(f"Tempo gasto na consulta: {time_spent} segundos")
+        print()
+        print("Similaridades da consulta com os documentos:")
+        print()
 
-    print()
-    print(f"Tempo gasto na consulta: {time_spent} segundos")
-    print()
-    print("Similaridades da consulta com os documentos:")
-    print()
+        resultados = [(i, nomes[i], similaridades[i]) for i in range(len(similaridades))]
+        resultados_ordenados = sorted(resultados, key=lambda x: x[2][0], reverse=True)
 
-    resultados = [(i, nomes[i], similaridades[i]) for i in range(len(similaridades))]
-    resultados_ordenados = sorted(resultados, key=lambda x: x[2][0], reverse=True)
-    
-    for i, nome, similaridade in resultados_ordenados:
-        print(f"{nome}: (cosseno {similaridade[0]:.4f})  (sem divisao: {similaridade[1]:.4f})")
+        for i, nome, similaridade in resultados_ordenados:
+            print(f"{nome} - {similaridade[0]:.4f}".replace('.', ','))
 
-    print()
+        print()
+
+        consulta = " ".join(input("Digite a consulta ou enter para sair: ").strip().split())
